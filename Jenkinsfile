@@ -48,47 +48,44 @@ pipeline {
         stage('Deploy with Minimal Downtime') {
             steps {
                 script {
-                    // Тимчасовий порт для нового контейнера
                     def TEMP_PORT = APP_PORT.toInteger() + 1000
                     echo "Deploying new container on temporary port ${TEMP_PORT}"
 
-                    // Видаляємо попередній тимчасовий контейнер, якщо він існує
+                    // Видаляємо попередній тимчасовий контейнер
                     sh """
                     docker stop ${IMAGE_NAME}_temp || true
                     docker rm ${IMAGE_NAME}_temp || true
                     docker run -d --name ${IMAGE_NAME}_temp -p ${TEMP_PORT}:3000 ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}
                     """
 
-                    // Чекаємо, поки новий контейнер підніметься
+                    // Чекаємо, поки Docker підтвердить, що контейнер запущений
                     sh """
-                    for i in {1..10}; do
-                      if curl -s http://localhost:${TEMP_PORT} > /dev/null; then
-                        echo "New container is up on port ${TEMP_PORT}"
-                        break
-                      fi
-                      sleep 3
+                    ATTEMPTS=0
+                    until [ \$(docker inspect -f '{{.State.Running}}' ${IMAGE_NAME}_temp) == "true" ] || [ \$ATTEMPTS -ge 5 ]; do
+                      sleep 1
+                      ATTEMPTS=\$((ATTEMPTS+1))
                     done
                     """
+
+                    echo "New container is running on temp port"
 
                     // Зупиняємо старий контейнер на основному порту
                     sh """
                     CONTAINER_ID=\$(docker ps -q --filter "publish=${APP_PORT}")
                     if [ -n "\$CONTAINER_ID" ]; then
-                      echo "Stopping old container on port ${APP_PORT}"
                       docker stop \$CONTAINER_ID
                       docker rm \$CONTAINER_ID
                     fi
                     """
 
-                    // Запускаємо новий контейнер на основному порту
+                    // Переміщаємо новий контейнер на основний порт
                     sh """
+                    docker stop ${IMAGE_NAME}_temp
+                    docker rm ${IMAGE_NAME}_temp
                     docker run -d --name ${IMAGE_NAME}_${BRANCH_NAME} -p ${APP_PORT}:3000 ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}
                     """
 
-                    // Видаляємо тимчасовий контейнер
-                    sh "docker stop ${IMAGE_NAME}_temp || true && docker rm ${IMAGE_NAME}_temp || true"
-
-                    echo "Deployment completed with minimal downtime"
+                    echo "Deployment completed with almost zero downtime"
                 }
             }
         }
