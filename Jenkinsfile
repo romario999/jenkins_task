@@ -1,9 +1,7 @@
 pipeline {
     agent any
 
-    tools {
-        nodejs 'node'
-    }
+    tools { nodejs 'node' }
 
     environment {
         DOCKER_IMAGE_TAG = "v1.0"
@@ -13,59 +11,61 @@ pipeline {
         stage('Checkout') {
             steps {
                 script {
-                    def BRANCH_NAME = env.BRANCH_NAME
-                    def IMAGE_NAME = "node${BRANCH_NAME}"
-                    def APP_PORT = (BRANCH_NAME == 'main') ? 3000 : 3001
+                    BRANCH_NAME = env.BRANCH_NAME
+                    IMAGE_NAME = "node${BRANCH_NAME}"
+                    APP_PORT = (BRANCH_NAME == 'main') ? 3000 : 3001
+                    TEMP_PORT = APP_PORT + 1000
 
                     echo "Branch: ${BRANCH_NAME}"
                     echo "Docker Image: ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
-                    echo "App will run on port: ${APP_PORT}"
-                    
-                    // Зберігаємо для наступних стадій
-                    env.IMAGE_NAME = IMAGE_NAME
-                    env.APP_PORT = "${APP_PORT}"
+                    echo "App main port: ${APP_PORT}, temp port: ${TEMP_PORT}"
                 }
             }
         }
 
-        stage('Build') {
-            steps {
-                sh 'npm install'
-            }
-        }
-
-        stage('Test') {
-            steps {
-                sh 'npm test'
-            }
-        }
+        stage('Build') { steps { sh 'npm install' } }
+        stage('Test')  { steps { sh 'npm test' } }
 
         stage('Build Docker Image') {
             steps {
                 script {
-                    echo "Building Docker image: ${env.IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
-                    sh "docker build -t ${env.IMAGE_NAME}:${DOCKER_IMAGE_TAG} ."
+                    echo "Building Docker image: ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+                    sh "docker build -t ${IMAGE_NAME}:${DOCKER_IMAGE_TAG} ."
                 }
             }
         }
 
-        stage('Deploy') {
+        stage('Deploy Zero-Downtime') {
             steps {
                 script {
-                    echo "Stopping any previous container running ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
-                    sh """
-                    CONTAINER_ID=\$(docker ps -q --filter ancestor=${IMAGE_NAME}:${DOCKER_IMAGE_TAG})
-                    if [ -n "\$CONTAINER_ID" ]; then
-                        echo "Found running container: \$CONTAINER_ID. Stopping..."
-                        docker stop \$CONTAINER_ID
-                        docker rm \$CONTAINER_ID
-                    else
-                        echo "No running container found."
-                    fi
+                    // 1. Знаходимо старий контейнер (за портом)
+                    OLD_CONTAINER = sh(
+                        script: "docker ps -q --filter publish=${APP_PORT}",
+                        returnStdout: true
+                    ).trim()
 
-                    echo "Deploying ${IMAGE_NAME}:${DOCKER_IMAGE_TAG} on port ${APP_PORT}"
-                    docker run -d --expose 3000 -p ${APP_PORT}:3000 ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}
-                    """
+                    // 2. Піднімаємо новий контейнер на TEMP_PORT
+                    echo "Starting new container on temp port ${TEMP_PORT}"
+                    sh "docker run -d -p ${TEMP_PORT}:3000 ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+
+                    // 3. Чекаємо, поки новий контейнер стартує
+                    sleep(time: 5, unit: 'seconds') // можна додати перевірку curl на /health
+
+                    // 4. Зупиняємо старий контейнер
+                    if (OLD_CONTAINER) {
+                        echo "Stopping old container ${OLD_CONTAINER}"
+                        sh "docker stop ${OLD_CONTAINER} && docker rm ${OLD_CONTAINER}"
+                    }
+
+                    // 5. Перепідключаємо новий контейнер на основний порт
+                    echo "Rebinding new container to main port ${APP_PORT}"
+                    NEW_CONTAINER = sh(
+                        script: "docker ps -q --filter publish=${TEMP_PORT}",
+                        returnStdout: true
+                    ).trim()
+                    
+                    sh "docker stop ${NEW_CONTAINER}"
+                    sh "docker run -d -p ${APP_PORT}:3000 ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
                 }
             }
         }
