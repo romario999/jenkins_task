@@ -64,4 +64,12 @@ pipeline {
         }
 
         stage('Deploy') {
-
+            steps {
+                script {
+                    echo "Deploying ${IMAGE_NAME}:${DOCKER_IMAGE_TAG} on port ${APP_PORT}"
+                    sh "docker run -d --expose 3000 -p ${APP_PORT}:3000 ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+                }
+            }
+        }
+    }
+}
