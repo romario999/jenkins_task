@@ -25,11 +25,15 @@ pipeline {
         }
 
         stage('Build') {
-            steps { sh 'npm install' }
+            steps {
+                sh 'npm install'
+            }
         }
 
         stage('Test') {
-            steps { sh 'npm test' }
+            steps {
+                sh 'npm test'
+            }
         }
 
         stage('Build Docker Image') {
@@ -41,25 +45,29 @@ pipeline {
             }
         }
 
+        stage('Stop and Remove Previous Container') {
+            steps {
+                script {
+                    echo "Stopping any previous container running ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+                    sh """
+                    CONTAINER_ID=\$(docker ps -q --filter ancestor=${IMAGE_NAME}:${DOCKER_IMAGE_TAG})
+                    if [ -n "\$CONTAINER_ID" ]; then
+                        echo "Found running container: \$CONTAINER_ID. Stopping..."
+                        docker stop \$CONTAINER_ID
+                        docker rm \$CONTAINER_ID
+                    else
+                        echo "No running container found."
+                    fi
+                    """
+                }
+            }
+        }
+
         stage('Deploy') {
             steps {
                 script {
-                    // 1. Знаходимо старий контейнер за образом
-                    def OLD_CONTAINER = sh(
-                        script: "docker ps -q --filter ancestor=${IMAGE_NAME}:${DOCKER_IMAGE_TAG}",
-                        returnStdout: true
-                    ).trim()
-
-                    if (OLD_CONTAINER) {
-                        echo "Stopping old container ${OLD_CONTAINER}"
-                        sh "docker stop ${OLD_CONTAINER} && docker rm ${OLD_CONTAINER}"
-                    } else {
-                        echo "No old container found"
-                    }
-
-                    // 2. Запускаємо новий контейнер на основному порту
-                    echo "Starting new container on port ${APP_PORT}"
-                    sh "docker run -d -p ${APP_PORT}:3000 ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+                    echo "Deploying ${IMAGE_NAME}:${DOCKER_IMAGE_TAG} on port ${APP_PORT}"
+                    sh "docker run -d --expose 3000 -p ${APP_PORT}:3000 ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
                 }
             }
         }
