@@ -45,29 +45,25 @@ pipeline {
             }
         }
 
-        stage('Stop and Remove Previous Container') {
-            steps {
-                script {
-                    echo "Stopping any previous container running ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
-                    sh """
-                    CONTAINER_ID=\$(docker ps -q --filter ancestor=${IMAGE_NAME}:${DOCKER_IMAGE_TAG})
-                    if [ -n "\$CONTAINER_ID" ]; then
-                        echo "Found running container: \$CONTAINER_ID. Stopping..."
-                        docker stop \$CONTAINER_ID
-                        docker rm \$CONTAINER_ID
-                    else
-                        echo "No running container found."
-                    fi
-                    """
-                }
-            }
-        }
-
         stage('Deploy') {
             steps {
                 script {
-                    echo "Deploying ${IMAGE_NAME}:${DOCKER_IMAGE_TAG} on port ${APP_PORT}"
-                    sh "docker run -d --expose 3000 -p ${APP_PORT}:3000 ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+                    TEMP_PORT=$((APP_PORT + 1000))
+                    echo "Deploying new container on temp port ${TEMP_PORT}"
+
+                    sh "docker run -d --expose 3000 -p ${TEMP_PORT}:3000 ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+
+                    echo "Switching ports..."
+                    sh """
+                    OLD_CONTAINER=\$(docker ps -q --filter ancestor=${IMAGE_NAME}:${DOCKER_IMAGE_TAG})
+                    if [ -n "\$OLD_CONTAINER" ]; then
+                        docker stop \$OLD_CONTAINER
+                        docker rm \$OLD_CONTAINER
+                    fi
+                    docker run -d --expose 3000 -p ${APP_PORT}:3000 ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}
+                    docker stop \$(docker ps -q --filter "publish=${TEMP_PORT}")
+                    docker rm \$(docker ps -a -q --filter "publish=${TEMP_PORT}")
+                    """
                 }
             }
         }
