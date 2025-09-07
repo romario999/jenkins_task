@@ -2,21 +2,24 @@ pipeline {
     agent any
 
     tools {
-        nodejs 'Node_7.8.0'
+        node 'Node_7.8.0'
     }
 
     environment {
-        BRANCH_NAME = env.BRANCH_NAME
-        IMAGE_NAME = "node${BRANCH_NAME}"
         DOCKER_IMAGE_TAG = "v1.0"
-        APP_PORT = (BRANCH_NAME == 'main') ? 3000 : 3001
     }
 
     stages {
         stage('Checkout') {
             steps {
                 script {
-                    echo "Checking out ${BRANCH_NAME} branch"
+                    BRANCH_NAME = env.BRANCH_NAME
+                    IMAGE_NAME = "node${BRANCH_NAME}"
+                    APP_PORT = (BRANCH_NAME == 'main') ? 3000 : 3001
+
+                    echo "Branch: ${BRANCH_NAME}"
+                    echo "Docker Image: ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+                    echo "App will run on port: ${APP_PORT}"
                 }
             }
         }
@@ -45,7 +48,7 @@ pipeline {
         stage('Stop and Remove Previous Container') {
             steps {
                 script {
-                    echo "Stopping and removing previous container for port ${APP_PORT}"
+                    echo "Stopping any previous container running ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
                     sh """
                     CONTAINER_ID=\$(docker ps -q --filter ancestor=${IMAGE_NAME}:${DOCKER_IMAGE_TAG})
                     if [ -n "\$CONTAINER_ID" ]; then
@@ -63,10 +66,11 @@ pipeline {
         stage('Deploy') {
             steps {
                 script {
-                    echo "Deploying application on port ${APP_PORT} with image ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+                    echo "Deploying ${IMAGE_NAME}:${DOCKER_IMAGE_TAG} on port ${APP_PORT}"
                     sh "docker run -d --expose 3000 -p ${APP_PORT}:3000 ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
                 }
             }
         }
     }
 }
+
