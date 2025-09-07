@@ -49,30 +49,32 @@ pipeline {
         stage('Deploy') {
             steps {
                 script {
-                    def APP_PORT = (env.BRANCH_NAME == 'main') ? 3000 : 3001
-                    def TEMP_PORT = APP_PORT + 1000
-                    def IMAGE_NAME = "node${env.BRANCH_NAME}"
+                    echo "Starting deployment of ${IMAGE_NAME}:${DOCKER_IMAGE_TAG} with minimal downtime"
 
-                    echo "Deploying new container on temp port ${TEMP_PORT}"
+                    TEMP_PORT=$((APP_PORT + 1000))
+                    TEMP_CONTAINER_NAME="${IMAGE_NAME}_temp"
 
-                    sh "docker run -d --expose 3000 -p ${TEMP_PORT}:3000 ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
-
-                    echo "Switching ports..."
                     sh """
-                    OLD_CONTAINER=\$(docker ps -q --filter ancestor=${IMAGE_NAME}:${DOCKER_IMAGE_TAG})
-                    if [ -n "\$OLD_CONTAINER" ]; then
-                        docker stop \$OLD_CONTAINER
-                        docker rm \$OLD_CONTAINER
-                    fi
-
-                    docker run -d --expose 3000 -p ${APP_PORT}:3000 ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}
-
-                    TEMP_CONTAINER=\$(docker ps -q --filter "publish=${TEMP_PORT}")
-                    if [ -n "\$TEMP_CONTAINER" ]; then
-                        docker stop \$TEMP_CONTAINER
-                        docker rm \$TEMP_CONTAINER
-                    fi
+                    echo "Running new container ${TEMP_CONTAINER_NAME} on port ${TEMP_PORT}"
+                    docker run -d --name ${TEMP_CONTAINER_NAME} -p ${TEMP_PORT}:3000 ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}
                     """
+
+                    OLD_CONTAINER_ID=$(sh(script: "docker ps -q --filter 'name=^${IMAGE_NAME}$'", returnStdout: true).trim())
+
+                    if (OLD_CONTAINER_ID) {
+                        echo "Stopping old container ${OLD_CONTAINER_ID}"
+                        sh "docker stop ${OLD_CONTAINER_ID} && docker rm ${OLD_CONTAINER_ID}"
+                    } else {
+                        echo "No old container found"
+                    }
+
+                    sh """
+                    echo "Restarting new container ${TEMP_CONTAINER_NAME} on main port ${APP_PORT}"
+                    docker stop ${TEMP_CONTAINER_NAME} && docker rm ${TEMP_CONTAINER_NAME}
+                    docker run -d --name ${IMAGE_NAME} -p ${APP_PORT}:3000 ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}
+                    """
+
+                    echo "Deployment completed successfully!"
                 }
             }
         }
