@@ -20,6 +20,10 @@ pipeline {
                     echo "Branch: ${BRANCH_NAME}"
                     echo "Docker Image: ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
                     echo "App will run on port: ${APP_PORT}"
+                    
+                    // Зберігаємо для наступних стадій
+                    env.IMAGE_NAME = IMAGE_NAME
+                    env.APP_PORT = "${APP_PORT}"
                 }
             }
         }
@@ -39,9 +43,8 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    def IMAGE_NAME = "node${env.BRANCH_NAME}"
-                    echo "Building Docker image: ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
-                    sh "docker build -t ${IMAGE_NAME}:${DOCKER_IMAGE_TAG} ."
+                    echo "Building Docker image: ${env.IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+                    sh "docker build -t ${env.IMAGE_NAME}:${DOCKER_IMAGE_TAG} ."
                 }
             }
         }
@@ -49,17 +52,22 @@ pipeline {
         stage('Deploy') {
             steps {
                 script {
-                    echo "Starting deployment of ${IMAGE_NAME}:${DOCKER_IMAGE_TAG} with minimal downtime"
+                    echo "Starting deployment of ${env.IMAGE_NAME}:${DOCKER_IMAGE_TAG} with minimal downtime"
 
-                    TEMP_PORT=$((APP_PORT + 1000))
-                    TEMP_CONTAINER_NAME="${IMAGE_NAME}_temp"
+                    def TEMP_PORT = (env.APP_PORT as int) + 1000
+                    def TEMP_CONTAINER_NAME = "${env.IMAGE_NAME}_temp"
 
+                    // Запускаємо новий контейнер на тимчасовому порту
                     sh """
                     echo "Running new container ${TEMP_CONTAINER_NAME} on port ${TEMP_PORT}"
-                    docker run -d --name ${TEMP_CONTAINER_NAME} -p ${TEMP_PORT}:3000 ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}
+                    docker run -d --name ${TEMP_CONTAINER_NAME} -p ${TEMP_PORT}:3000 ${env.IMAGE_NAME}:${DOCKER_IMAGE_TAG}
                     """
 
-                    OLD_CONTAINER_ID=$(sh(script: "docker ps -q --filter 'name=^${IMAGE_NAME}$'", returnStdout: true).trim())
+                    // Знаходимо старий контейнер (не тимчасовий)
+                    def OLD_CONTAINER_ID = sh(
+                        script: "docker ps -q --filter 'name=^${env.IMAGE_NAME}\$'",
+                        returnStdout: true
+                    ).trim()
 
                     if (OLD_CONTAINER_ID) {
                         echo "Stopping old container ${OLD_CONTAINER_ID}"
@@ -68,10 +76,11 @@ pipeline {
                         echo "No old container found"
                     }
 
+                    // Перемикаємо новий контейнер на основний порт
                     sh """
-                    echo "Restarting new container ${TEMP_CONTAINER_NAME} on main port ${APP_PORT}"
+                    echo "Restarting new container ${TEMP_CONTAINER_NAME} on main port ${env.APP_PORT}"
                     docker stop ${TEMP_CONTAINER_NAME} && docker rm ${TEMP_CONTAINER_NAME}
-                    docker run -d --name ${IMAGE_NAME} -p ${APP_PORT}:3000 ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}
+                    docker run -d --name ${env.IMAGE_NAME} -p ${env.APP_PORT}:3000 ${env.IMAGE_NAME}:${DOCKER_IMAGE_TAG}
                     """
 
                     echo "Deployment completed successfully!"
