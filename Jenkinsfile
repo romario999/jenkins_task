@@ -50,27 +50,24 @@ pipeline {
         }
 
         stage('Deploy') {
-    steps {
-        script {
-            echo "Deploying ${env.IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+            steps {
+                script {
+                    echo "Stopping any previous container running ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+                    sh """
+                    CONTAINER_ID=\$(docker ps -q --filter ancestor=${IMAGE_NAME}:${DOCKER_IMAGE_TAG})
+                    if [ -n "\$CONTAINER_ID" ]; then
+                        echo "Found running container: \$CONTAINER_ID. Stopping..."
+                        docker stop \$CONTAINER_ID
+                        docker rm \$CONTAINER_ID
+                    else
+                        echo "No running container found."
+                    fi
 
-            // Зупиняємо старий контейнер, якщо він є
-            def OLD_CONTAINER_ID = sh(
-                script: "docker ps -q --filter 'name=^${env.IMAGE_NAME}\$'",
-                returnStdout: true
-            ).trim()
-
-            if (OLD_CONTAINER_ID) {
-                echo "Stopping old container ${OLD_CONTAINER_ID}"
-                sh "docker stop ${OLD_CONTAINER_ID} && docker rm ${OLD_CONTAINER_ID}"
+                    echo "Deploying ${IMAGE_NAME}:${DOCKER_IMAGE_TAG} on port ${APP_PORT}"
+                    docker run -d --expose 3000 -p ${APP_PORT}:3000 ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}
+                    """
+                }
             }
-
-            // Запускаємо новий контейнер на основному порту
-            sh "docker run -d --name ${env.IMAGE_NAME} -p ${env.APP_PORT}:3000 ${env.IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
-            echo "Deployment completed successfully!"
         }
-    }
-}
-
     }
 }
