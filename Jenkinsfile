@@ -48,15 +48,18 @@ pipeline {
         stage('Deploy with Minimal Downtime') {
             steps {
                 script {
-                    TEMP_PORT = APP_PORT.toInteger() + 1000
+                    // Тимчасовий порт для нового контейнера
+                    def TEMP_PORT = APP_PORT.toInteger() + 1000
                     echo "Deploying new container on temporary port ${TEMP_PORT}"
 
-                    // Запуск нового контейнера на тимчасовому порту
+                    // Видаляємо попередній тимчасовий контейнер, якщо він існує
                     sh """
+                    docker stop ${IMAGE_NAME}_temp || true
+                    docker rm ${IMAGE_NAME}_temp || true
                     docker run -d --name ${IMAGE_NAME}_temp -p ${TEMP_PORT}:3000 ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}
                     """
 
-                    // Чекаємо, поки він підніметься
+                    // Чекаємо, поки новий контейнер підніметься
                     sh """
                     for i in {1..10}; do
                       if curl -s http://localhost:${TEMP_PORT} > /dev/null; then
@@ -67,7 +70,7 @@ pipeline {
                     done
                     """
 
-                    // Якщо старий контейнер існує — зупиняємо і видаляємо
+                    // Зупиняємо старий контейнер на основному порту
                     sh """
                     CONTAINER_ID=\$(docker ps -q --filter "publish=${APP_PORT}")
                     if [ -n "\$CONTAINER_ID" ]; then
