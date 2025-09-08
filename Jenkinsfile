@@ -40,7 +40,7 @@ pipeline {
             steps {
                 script {
                     echo "Building Docker image: ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
-                    sh "docker build -t ${IMAGE_NAME}:${DOCKER_IMAGE_TAG} ."
+                    sh "docker build --platform=linux/amd64 -t ${IMAGE_NAME}:${DOCKER_IMAGE_TAG} ."
                 }
             }
         }
