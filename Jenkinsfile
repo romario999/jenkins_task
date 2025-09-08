@@ -48,9 +48,9 @@ pipeline {
         stage('Stop and Remove Previous Container') {
             steps {
                 script {
-                    echo "Stopping any previous container running ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+                    echo "Stopping any previous container running on port ${APP_PORT}"
                     sh """
-                    CONTAINER_ID=\$(docker ps -q --filter ancestor=${IMAGE_NAME}:${DOCKER_IMAGE_TAG})
+                    CONTAINER_ID=\$(docker ps -q --filter "publish=${APP_PORT}")
                     if [ -n "\$CONTAINER_ID" ]; then
                         echo "Found running container: \$CONTAINER_ID. Stopping..."
                         docker stop \$CONTAINER_ID

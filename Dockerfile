@@ -1,4 +1,4 @@
-FROM node:20:
+FROM node:20
 WORKDIR /opt
 ADD . /opt
 RUN npm install
