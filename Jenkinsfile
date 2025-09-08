@@ -69,6 +69,8 @@ pipeline {
     post {
         always {
             echo "Pipeline finished for branch ${env.BRANCH_NAME}"
+            sh "docker ps -a -q --filter 'status=exited' | xargs -r docker rm"
+            sh "docker image prune -f"
         }
         failure {
             echo "Build failed!"
