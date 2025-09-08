@@ -51,7 +51,6 @@ pipeline {
                     def containerName = "${env.IMAGE_NAME}_container"
                     def appPort = (env.BRANCH_NAME == 'main') ? 3000 : 3001
 
-                    // Функція для зупинки контейнера по імені
                     sh """
                     CONTAINER_ID=\$(docker ps -q --filter "name=${containerName}")
                     if [ -n "\$CONTAINER_ID" ]; then
@@ -61,7 +60,6 @@ pipeline {
                     fi
                     """
 
-                    // Запуск нового контейнера
                     sh "docker run -d --name ${containerName} --expose ${appPort} -p ${appPort}:3000 ${env.IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
                 }
             }
