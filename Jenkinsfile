@@ -7,6 +7,7 @@ pipeline {
 
     environment {
         DOCKER_IMAGE_TAG = "v1.0"
+        DOCKER_CREDENTIALS = "docker-hub-creds"
     }
 
     stages {
@@ -25,15 +26,11 @@ pipeline {
         }
 
         stage('Install Dependencies') {
-            steps {
-                sh 'npm install'
-            }
+            steps { sh 'npm install' }
         }
 
         stage('Run Tests') {
-            steps {
-                sh 'npm test'
-            }
+            steps { sh 'npm test' }
         }
 
         stage('Build Docker Image') {
@@ -45,22 +42,26 @@ pipeline {
             }
         }
 
-        stage('Deploy') {
+        stage('Push to Docker Hub') {
             steps {
+                withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS}", usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    script {
+                        sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
+                        sh "docker tag ${env.IMAGE_NAME}:${DOCKER_IMAGE_TAG} $DOCKER_USER/${env.IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+                        sh "docker push $DOCKER_USER/${env.IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+                    }
+                }
+            }
+        }
+
+        stage('Trigger Deploy Pipeline') {
+ Ж           steps {
                 script {
-                    def containerName = "${env.IMAGE_NAME}_container"
-                    def appPort = (env.BRANCH_NAME == 'main') ? 3000 : 3001
-
-                    sh """
-                    CONTAINER_ID=\$(docker ps -q --filter "name=${containerName}")
-                    if [ -n "\$CONTAINER_ID" ]; then
-                        echo "Stopping previous container: \$CONTAINER_ID"
-                        docker stop \$CONTAINER_ID
-                        docker rm \$CONTAINER_ID
-                    fi
-                    """
-
-                    sh "docker run -d --name ${containerName} --expose ${appPort} -p ${appPort}:3000 ${env.IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+                    def deployJob = (env.BRANCH_NAME == 'main') ? "Deploy_to_main" : "Deploy_to_dev"
+                    build job: deployJob, wait: false, parameters: [
+                        string(name: 'IMAGE_NAME', value: "${env.IMAGE_NAME}"),
+                        string(name: 'IMAGE_TAG', value: "${DOCKER_IMAGE_TAG}")
+                    ]
                 }
             }
         }
@@ -72,8 +73,6 @@ pipeline {
             sh "docker ps -a -q --filter 'status=exited' | xargs -r docker rm"
             sh "docker image prune -f"
         }
-        failure {
-            echo "Build failed!"
-        }
+        failure { echo "Build failed!" }
     }
 }
