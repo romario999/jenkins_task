@@ -46,17 +46,19 @@ pipeline {
             }
         }
 
-        stage('Push to Docker Hub') {
+       stage('Push to Docker Hub') {
             steps {
                 withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS}", usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                     script {
-                        sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
-                        sh "docker tag ${env.IMAGE_NAME}:${DOCKER_IMAGE_TAG} $DOCKER_USER/${env.IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
-                        sh "docker push $DOCKER_USER/${env.IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+                        sh '''#!/bin/bash
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                        docker tag ${IMAGE_NAME}:${DOCKER_IMAGE_TAG} $DOCKER_USER/${IMAGE_NAME}:${DOCKER_IMAGE_TAG}
+                        docker push $DOCKER_USER/${IMAGE_NAME}:${DOCKER_IMAGE_TAG}
+                        '''
+                        }
                     }
-                }
             }
-        }
+    }
 
         stage('Trigger Deploy Pipeline') {
             steps {
