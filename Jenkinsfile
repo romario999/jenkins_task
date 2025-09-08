@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     tools {
-        nodejs 'node' // Назва NodeJS, яку ти вказав у "Global Tool Configuration"
+        nodejs 'node'
     }
 
     environment {
@@ -12,7 +12,6 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                // Використовуємо SSH ключі Jenkins для GitHub
                 checkout([
                     $class: 'GitSCM',
                     branches: [[name: env.BRANCH_NAME]],
@@ -40,11 +39,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    if (env.BRANCH_NAME == 'main') {
-                        env.IMAGE_NAME = "nodemain"
-                    } else {
-                        env.IMAGE_NAME = "nodedev"
-                    }
+                    env.IMAGE_NAME = (env.BRANCH_NAME == 'main') ? "nodemain" : "nodedev"
                     sh "docker build -t ${env.IMAGE_NAME}:${DOCKER_IMAGE_TAG} ."
                 }
             }
@@ -54,21 +49,20 @@ pipeline {
             steps {
                 script {
                     def containerName = "${env.IMAGE_NAME}_container"
-                    def portMapping = (env.BRANCH_NAME == 'main') ? "3000:3000" : "3001:3000"
-                    def exposePort = (env.BRANCH_NAME == 'main') ? "3000" : "3001"
+                    def appPort = (env.BRANCH_NAME == 'main') ? 3000 : 3001
 
-                    // Зупинити і видалити попередні контейнери
+                    // Функція для зупинки контейнера по імені
                     sh """
-                        CONTAINER_ID=\$(docker ps -q --filter "name=${containerName}")
-                        if [ -n "\$CONTAINER_ID" ]; then
-                            echo "Stopping previous container..."
-                            docker stop \$CONTAINER_ID
-                            docker rm \$CONTAINER_ID
-                        fi
+                    CONTAINER_ID=\$(docker ps -q --filter "name=${containerName}")
+                    if [ -n "\$CONTAINER_ID" ]; then
+                        echo "Stopping previous container: \$CONTAINER_ID"
+                        docker stop \$CONTAINER_ID
+                        docker rm \$CONTAINER_ID
+                    fi
                     """
 
-                    // Запустити новий контейнер
-                    sh "docker run -d --name ${containerName} --expose ${exposePort} -p ${portMapping} ${env.IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+                    // Запуск нового контейнера
+                    sh "docker run -d --name ${containerName} --expose ${appPort} -p ${appPort}:3000 ${env.IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
                 }
             }
         }
