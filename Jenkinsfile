@@ -12,25 +12,25 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                script {
-                    BRANCH_NAME = env.BRANCH_NAME
-                    IMAGE_NAME = "node${BRANCH_NAME}"
-                    APP_PORT = (BRANCH_NAME == 'main') ? 3000 : 3001
-
-                    echo "Branch: ${BRANCH_NAME}"
-                    echo "Docker Image: ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
-                    echo "App will run on port: ${APP_PORT}"
-                }
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: env.BRANCH_NAME]],
+                    doGenerateSubmoduleConfigurations: false,
+                    extensions: [],
+                    userRemoteConfigs: [[
+                        url: 'git@github.com:romario999/jenkins_task.git',
+                    ]]
+                ])
             }
         }
 
-        stage('Build') {
+        stage('Install Dependencies') {
             steps {
                 sh 'npm install'
             }
         }
 
-        stage('Test') {
+        stage('Run Tests') {
             steps {
                 sh 'npm test'
             }
@@ -39,26 +39,12 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    echo "Building Docker image: ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
-                    sh "docker build -t ${IMAGE_NAME}:${DOCKER_IMAGE_TAG} ."
-                }
-            }
-        }
-
-        stage('Stop and Remove Previous Container') {
-            steps {
-                script {
-                    echo "Stopping any previous container running ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
-                    sh """
-                    CONTAINER_ID=\$(docker ps -q --filter ancestor=${IMAGE_NAME}:${DOCKER_IMAGE_TAG})
-                    if [ -n "\$CONTAINER_ID" ]; then
-                        echo "Found running container: \$CONTAINER_ID. Stopping..."
-                        docker stop \$CONTAINER_ID
-                        docker rm \$CONTAINER_ID
-                    else
-                        echo "No running container found."
-                    fi
-                    """
+                    if (env.BRANCH_NAME == 'main') {
+                        env.IMAGE_NAME = "nodemain"
+                    } else {
+                        env.IMAGE_NAME = "nodedev"
+                    }
+                    sh "docker build -t ${env.IMAGE_NAME}:${DOCKER_IMAGE_TAG} ."
                 }
             }
         }
@@ -66,10 +52,31 @@ pipeline {
         stage('Deploy') {
             steps {
                 script {
-                    echo "Deploying ${IMAGE_NAME}:${DOCKER_IMAGE_TAG} on port ${APP_PORT}"
-                    sh "docker run -d --expose 3000 -p ${APP_PORT}:3000 ${IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
+                    def containerName = "${env.IMAGE_NAME}_container"
+                    def portMapping = (env.BRANCH_NAME == 'main') ? "3000:3000" : "3001:3000"
+                    def exposePort = (env.BRANCH_NAME == 'main') ? "3000" : "3001"
+
+                    sh """
+                        CONTAINER_ID=\$(docker ps -q --filter "name=${containerName}")
+                        if [ -n "\$CONTAINER_ID" ]; then
+                            echo "Stopping previous container..."
+                            docker stop \$CONTAINER_ID
+                            docker rm \$CONTAINER_ID
+                        fi
+                    """
+
+                    sh "docker run -d --name ${containerName} --expose ${exposePort} -p ${portMapping} ${env.IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
                 }
             }
+        }
+    }
+
+    post {
+        always {
+            echo "Pipeline finished for branch ${env.BRANCH_NAME}"
+        }
+        failure {
+            echo "Build failed!"
         }
     }
 }
