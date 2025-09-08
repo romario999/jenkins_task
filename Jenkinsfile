@@ -37,6 +37,17 @@ pipeline {
             }
         }
 
+        stage('Lint Dockerfile') {
+            steps {
+                script {
+                    sh '''
+                        docker run --rm -i hadolint/hadolint < Dockerfile
+                    '''
+                }
+            }
+        }
+
+
         stage('Build Docker Image') {
             steps {
                 script {
