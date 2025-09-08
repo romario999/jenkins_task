@@ -19,8 +19,7 @@ pipeline {
                     doGenerateSubmoduleConfigurations: false,
                     extensions: [],
                     userRemoteConfigs: [[
-                        url: 'git@github.com:username/repo.git',
-                        credentialsId: 'github-ssh-creds'
+                        url: 'git@github.com:romario999/jenkins_task.git',
                     ]]
                 ])
             }
