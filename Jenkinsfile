@@ -46,6 +46,15 @@ pipeline {
             }
         }
 
+        stage('Scan Docker image for vulnerabilities') {
+            steps {
+                script {
+                    def vulnerabilities = sh(script: "trivy image --exit-code 0 --severity HIGH,MEDIUM,LOW --no-progress ${env.IMAGE_NAME}:${DOCKER_IMAGE_TAG}", returnStdout: true).trim()
+                    echo "Vulnerability report: \n ${vulnerabilities}"
+                }
+            }
+        }
+
        stage('Push to Docker Hub') {
             steps {
                 withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS}", usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
