@@ -26,11 +26,15 @@ pipeline {
         }
 
         stage('Install Dependencies') {
-            steps { sh 'npm install' }
+            steps {
+                sh 'npm install'
+            }
         }
 
         stage('Run Tests') {
-            steps { sh 'npm test' }
+            steps {
+                sh 'npm test'
+            }
         }
 
         stage('Build Docker Image') {
@@ -73,6 +77,8 @@ pipeline {
             sh "docker ps -a -q --filter 'status=exited' | xargs -r docker rm"
             sh "docker image prune -f"
         }
-        failure { echo "Build failed!" }
+        failure {
+            echo "Build failed!"
+        }
     }
 }
